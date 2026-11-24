@@ -1,0 +1,48 @@
+This document contains all the features possessed and actions done by the two network files in the directory. 
+As a start the two files are meant to simulate a basic network and its functionalities. The network will however be improved with time either directly on 
+the already created two files or through the addition of more files.
+The current project contains the following files as a start:
+	1.Sender.py-> Sends packets
+	2.Receiver.py->Receives packets
+
+
+Update meant to improve the network simulation:
+	I am going to use UDP instead of TCP.
+	New files:
+		1.receiver_udp.py:Listens for udp datagrams, unpacks a custom sequence header, avoids duplicate processing, and sends an ack back to whatever
+address sent the packet.(the router)
+		2.router.py:(Port 5000) Acts as a noisy network link. It forwards packets between the sender and the receiver in both directions, randomly 
+dropping 20% of them and adding slight latency.
+		3.sender_udp.py:(Ephemeral port) Attaches a sequence number(SEQ) to each message, sends it to the router(5000)
+and starts a 1.0-second timer . If no ack arrives before the timer expires, it retransmits the packets.
+		
+As I have confirmed. The network simulation is a bit more advanced by combining UCP(SOCK_DGRAM) with a middleman router (router.py)
+and some reliability logic(sequence numbers, ACKS and Timeouts)
+This is a miniature version of TCP's reliability engine specifically a stop and wait ARQ protocol from scratch.
+
+The improvements made using the new files stored in Binary packet framing and checksum validation ensures that CRC32 MISMATCH triggers automatic recovery.
+To improve this project further, I am going to implement sliding window( go-back-n ARQ) so multiple packets can fly across the network concurrently 
+instead of waiting one-by-one.
+
+
+SHORTCOMINGS OF THE SLIDING WINDOW GBN:
+	In sliding window GBN, router.py called time.sleep() directly inside the main recvfrom() loop.
+	That blocked the router from receiving incoming packets while waiting to send one, which meant packets could never overtake each other
+	(out-of-order delivery) and bursts could backup.
+
+In MULTI-MODE ROUTER TELEMETRY, router.py will:
+	1.Receive immediately in the main loop and inspect the binary header(unpack_packet) so the router can log exact sequence numbers and packet 
+	types(DATA,ACK,FIN).
+	2.Schedule synchronous delivery using threading.Timer with configurable --min-delay and --max-delay (jitter), plus a --reorder probability 
+	that artificially boosts delay on random packets so later packets overtake earlier ones-testing my Go-Back-N receiver's out-of-order rejection 
+	logic!
+	3.Stream live metrics to network_metrics.csv file after every event so that this level of the simulation(Multi Mode Router Telemetry)
+	can read real-time through-put,loss, corruption and reordering stats.
+
+
+
+Summary of stages and core network concepts implemented:
+1.TCP/UDP baseline: Loopback sockets(127.0.0.1),Ephemeral ports,bind/listen/accept vs sendto/recvfrom
+2.Binary framing and crc32: Big endian (struct.pack) (!IBHI 11-byte headers),z-lib.crc32 integrity checks,bit-flip corruption simulation
+3.Sliding window(Go-Back-N): Pipelined transmission(WINDOW_SIZE=4), cummulative ACKS, base timeout retransmission
+4.Multi Mode Router and NOC Monitor: Multi-threaded threading.Timer jitter/reordering,CSV Telemetry logging, live ANSI dashboard, automated benchmark suite.
